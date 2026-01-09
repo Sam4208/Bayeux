@@ -101,6 +101,39 @@
 #endif
 #endif // G4VIS_USE
 
+
+#include <G4RunManager.hh> // (Likely already there)
+
+// ====================================================================
+// START CAPTURE KILLER HACK
+// ====================================================================
+#include "G4UserStackingAction.hh"
+#include "G4Track.hh"
+#include "G4VProcess.hh"
+
+class CaptureKillerAction : public G4UserStackingAction {
+public:
+    CaptureKillerAction() : G4UserStackingAction() {}
+    virtual ~CaptureKillerAction() {}
+
+    virtual G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track* aTrack) {
+        // We only care about secondaries (ParentID > 0)
+        if (aTrack->GetParentID() > 0) {
+            const G4VProcess* creator = aTrack->GetCreatorProcess();
+            // Check if the creator process is Neutron Capture
+            if (creator && creator->GetProcessName() == "nCapture") {
+                // nCapture usually creates Gammas. We kill them to save memory/processing.
+                return fKill;
+            }
+        }
+        return fUrgent; // Keep everything else
+    }
+};
+// ====================================================================
+// END CAPTURE KILLER HACK
+// ====================================================================
+
+
 namespace mctools {
   namespace g4 {
 
@@ -947,6 +980,25 @@ namespace mctools {
 
       // Stacking action:
       _init_stacking_action ();
+
+      // ... existing code ...
+
+
+      // >>>>>>> INSERT THIS BLOCK <<<<<<<<
+      // FORCE OVERWRITE with Capture Killer
+      // This ignores whatever stacking action Falaise just loaded 
+      // and forces the engine to use yours.
+      if (_g4_run_manager_) {
+          _g4_run_manager_->SetUserAction(new CaptureKillerAction());
+          std::cout << ">>> [HACK] CaptureKillerAction has been forced into the RunManager!" << std::endl;
+      }
+      // >>>>>>> END BLOCK <<<<<<<<
+
+      // G4 kernel initialization:
+      DT_LOG_NOTICE(_logprio(), "G4 kernel initialization...");
+      _g4_run_manager_->Initialize();
+
+      // ... existing code ...
 
       // G4 kernel initialization:
       DT_LOG_NOTICE(_logprio(), "G4 kernel initialization...");
