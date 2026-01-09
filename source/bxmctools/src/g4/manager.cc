@@ -127,11 +127,27 @@ public:
                 G4String particleType = aTrack->GetDefinition()->GetParticleType();
 
                 // --- THE SAFER FILTER ---
-                // 1. Kill Gammas (The main target)
-                if (particleType == "gamma") return fKill;
 
-                // 2. Kill Leptons (Electrons from internal conversion)
-                if (particleType == "lepton") return fKill;
+                // Kill Gammas or Leptons
+                if (type == "gamma" || type == "lepton") {
+                    
+                    // --- DEBUG PRINT START ---
+                    // Static counter prevents terminal spamming
+                    static int killCounter = 0; 
+                    if (killCounter < 20) { // Only print the first 20 times
+                         std::cout << ">>> [CaptureKiller] ZAPPED a " << type 
+                                   << " (Energy: " << aTrack->GetKineticEnergy() << " MeV)" 
+                                   << std::endl;
+                         killCounter++;
+                    }
+                    if (killCounter == 20) {
+                         std::cout << ">>> [CaptureKiller] Silencing output now (still killing in background)..." << std::endl;
+                         killCounter++;
+                    }
+                    // --- DEBUG PRINT END ---
+
+                    return fKill;
+                }
 
                 // Everything else survives automatically:
                 // - "nucleus" (Isotopes, Deuterons, Alphas) -> KEPT
