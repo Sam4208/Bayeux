@@ -104,12 +104,14 @@
 
 #include <G4RunManager.hh> // (Likely already there)
 
+
 // ====================================================================
 // START CAPTURE KILLER HACK
 // ====================================================================
 #include "G4UserStackingAction.hh"
 #include "G4Track.hh"
 #include "G4VProcess.hh"
+#include "G4Gamma.hh"
 
 class CaptureKillerAction : public G4UserStackingAction {
 public:
@@ -117,16 +119,27 @@ public:
     virtual ~CaptureKillerAction() {}
 
     virtual G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track* aTrack) {
-        // We only care about secondaries (ParentID > 0)
         if (aTrack->GetParentID() > 0) {
             const G4VProcess* creator = aTrack->GetCreatorProcess();
-            // Check if the creator process is Neutron Capture
+            
             if (creator && creator->GetProcessName() == "nCapture") {
-                // nCapture usually creates Gammas. We kill them to save memory/processing.
-                return fKill;
+                
+                G4String particleType = aTrack->GetDefinition()->GetParticleType();
+
+                // --- THE SAFER FILTER ---
+                // 1. Kill Gammas (The main target)
+                if (particleType == "gamma") return fKill;
+
+                // 2. Kill Leptons (Electrons from internal conversion)
+                if (particleType == "lepton") return fKill;
+
+                // Everything else survives automatically:
+                // - "nucleus" (Isotopes, Deuterons, Alphas) -> KEPT
+                // - "baryon"  (Protons, Neutrons)            -> KEPT
+                // - "meson"   (Rare, but kept)               -> KEPT
             }
         }
-        return fUrgent; // Keep everything else
+        return fUrgent;
     }
 };
 // ====================================================================
