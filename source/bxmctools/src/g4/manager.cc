@@ -1007,10 +1007,6 @@ namespace mctools {
       }
       // >>>>>>> END BLOCK <<<<<<<<
 
-      // G4 kernel initialization:
-      DT_LOG_NOTICE(_logprio(), "G4 kernel initialization...");
-      _g4_run_manager_->Initialize();
-
       // ... existing code ...
 
       // G4 kernel initialization:
