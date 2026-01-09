@@ -101,17 +101,15 @@
 #endif
 #endif // G4VIS_USE
 
-
-#include <G4RunManager.hh> // (Likely already there)
-
-
 // ====================================================================
 // START CAPTURE KILLER HACK
 // ====================================================================
 #include "G4UserStackingAction.hh"
 #include "G4Track.hh"
 #include "G4VProcess.hh"
+#include "G4ParticleDefinition.hh"
 #include "G4Gamma.hh"
+#include <iostream>
 
 class CaptureKillerAction : public G4UserStackingAction {
 public:
@@ -119,43 +117,42 @@ public:
     virtual ~CaptureKillerAction() {}
 
     virtual G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track* aTrack) {
+        
+        // 1. Only check secondary particles (children)
         if (aTrack->GetParentID() > 0) {
+            
             const G4VProcess* creator = aTrack->GetCreatorProcess();
             
+            // 2. Only target particles created by Neutron Capture
             if (creator && creator->GetProcessName() == "nCapture") {
                 
-                G4String particleType = aTrack->GetDefinition()->GetParticleType();
+                // DEFINE THE VARIABLE 'type' HERE
+                G4String type = aTrack->GetDefinition()->GetParticleType();
 
-                // --- THE SAFER FILTER ---
-
-                // Kill Gammas or Leptons
+                // 3. The "Blacklist" - Kill Gammas and Leptons
                 if (type == "gamma" || type == "lepton") {
                     
                     // --- DEBUG PRINT START ---
-                    // Static counter prevents terminal spamming
                     static int killCounter = 0; 
-                    if (killCounter < 20) { // Only print the first 20 times
+                    if (killCounter < 20) { 
                          std::cout << ">>> [CaptureKiller] ZAPPED a " << type 
                                    << " (Energy: " << aTrack->GetKineticEnergy() << " MeV)" 
                                    << std::endl;
                          killCounter++;
                     }
                     if (killCounter == 20) {
-                         std::cout << ">>> [CaptureKiller] Silencing output now (still killing in background)..." << std::endl;
+                         std::cout << ">>> [CaptureKiller] Silencing output now..." << std::endl;
                          killCounter++;
                     }
                     // --- DEBUG PRINT END ---
 
                     return fKill;
                 }
-
-                // Everything else survives automatically:
-                // - "nucleus" (Isotopes, Deuterons, Alphas) -> KEPT
-                // - "baryon"  (Protons, Neutrons)            -> KEPT
-                // - "meson"   (Rare, but kept)               -> KEPT
             }
         }
-        return fUrgent;
+        
+        // 4. Keep everything else
+        return fUrgent; 
     }
 };
 // ====================================================================
