@@ -102,19 +102,41 @@
 #endif // G4VIS_USE
 
 // ====================================================================
-// START CAPTURE KILLER HACK
+// START CAPTURE KILLER HACK (With Ion Recording)
 // ====================================================================
 #include "G4UserStackingAction.hh"
 #include "G4Track.hh"
 #include "G4VProcess.hh"
 #include "G4ParticleDefinition.hh"
 #include "G4Gamma.hh"
+#include "G4SystemOfUnits.hh" // Needed for MeV, mm
+#include "G4AutoLock.hh"      // Needed for thread safety
 #include <iostream>
+#include <fstream>
+
+// -- Global file stream and mutex for thread safety --
+namespace {
+    G4Mutex captureMutex = G4MUTEX_INITIALIZER;
+    std::ofstream captureFile;
+}
 
 class CaptureKillerAction : public G4UserStackingAction {
 public:
-    CaptureKillerAction() : G4UserStackingAction() {}
-    virtual ~CaptureKillerAction() {}
+    CaptureKillerAction() : G4UserStackingAction() {
+        // Open the file safely when the action starts
+        G4AutoLock lock(&captureMutex);
+        if (!captureFile.is_open()) {
+            captureFile.open("NeutronCaptureIons.csv", std::ios::out);
+            // Write Header
+            captureFile << "ParticleName,Energy_MeV,X_mm,Y_mm,Z_mm" << std::endl;
+        }
+    }
+    
+    virtual ~CaptureKillerAction() {
+        // We usually don't close the static file here because other threads 
+        // might still be using it. We let the OS close it at program exit 
+        // or close it in the main RunAction.
+    }
 
     virtual G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track* aTrack) {
         
@@ -126,17 +148,45 @@ public:
             // 2. Only target particles created by Neutron Capture
             if (creator && creator->GetProcessName() == "nCapture") {
                 
-                // DEFINE THE VARIABLE 'type' HERE
-                G4String type = aTrack->GetDefinition()->GetParticleType();
+                G4ParticleDefinition* pDef = aTrack->GetDefinition();
+                G4String type = pDef->GetParticleType();
+                G4String name = pDef->GetParticleName();
 
-                // 3. The "Blacklist" - Kill Gammas and Leptons
+                // --------------------------------------------------------
+                // PART A: SAVE THE NUCLEUS (Iron, etc.)
+                // --------------------------------------------------------
+                if (type == "nucleus" || name == "GenericIon") {
+                    
+                    G4double eKin = aTrack->GetKineticEnergy();
+                    G4ThreeVector pos = aTrack->GetPosition();
+
+                    // Lock the file, write the data, then unlock
+                    {
+                        G4AutoLock lock(&captureMutex);
+                        captureFile << name << ","
+                                    << eKin / MeV << ","
+                                    << pos.x() / mm << ","
+                                    << pos.y() / mm << ","
+                                    << pos.z() / mm 
+                                    << std::endl;
+                    }
+
+                    // We want to KEEP the nucleus so it deposits energy/decays
+                    return fUrgent; 
+                }
+
+                // --------------------------------------------------------
+                // PART B: KILL THE GAMMA (The "Blacklist")
+                // --------------------------------------------------------
                 if (type == "gamma" || type == "lepton") {
                     
                     // --- DEBUG PRINT START ---
                     static int killCounter = 0; 
+                    // Note: 'killCounter' isn't thread-safe here strictly speaking, 
+                    // but for debug prints it doesn't matter much.
                     if (killCounter < 20) { 
                          std::cout << ">>> [CaptureKiller] ZAPPED a " << type 
-                                   << " (Energy: " << aTrack->GetKineticEnergy() << " MeV)" 
+                                   << " (Energy: " << aTrack->GetKineticEnergy() / MeV << " MeV)" 
                                    << std::endl;
                          killCounter++;
                     }
@@ -158,7 +208,6 @@ public:
 // ====================================================================
 // END CAPTURE KILLER HACK
 // ====================================================================
-
 
 namespace mctools {
   namespace g4 {
