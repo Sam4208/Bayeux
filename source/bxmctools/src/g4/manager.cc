@@ -102,7 +102,7 @@
 #endif // G4VIS_USE
 
 // ====================================================================
-// START CAPTURE KILLER HACK (Universal C++ Version)
+// START CAPTURE KILLER HACK (With Ion Recording)
 // ====================================================================
 #include "G4UserStackingAction.hh"
 #include "G4Track.hh"
@@ -110,13 +110,13 @@
 #include "G4ParticleDefinition.hh"
 #include "G4Gamma.hh"
 #include "G4SystemOfUnits.hh" // Needed for MeV, mm
+#include "G4AutoLock.hh"      // Needed for thread safety
 #include <iostream>
 #include <fstream>
-#include <mutex>              // <--- Standard C++ Thread Safety (Replaces G4AutoLock)
 
 // -- Global file stream and mutex for thread safety --
 namespace {
-    std::mutex captureMutex;  // Standard C++ Mutex
+    G4Mutex captureMutex = G4MUTEX_INITIALIZER;
     std::ofstream captureFile;
 }
 
@@ -124,8 +124,7 @@ class CaptureKillerAction : public G4UserStackingAction {
 public:
     CaptureKillerAction() : G4UserStackingAction() {
         // Open the file safely when the action starts
-        std::lock_guard<std::mutex> lock(captureMutex); // <--- Standard Lock
-        
+        G4AutoLock lock(&captureMutex);
         if (!captureFile.is_open()) {
             captureFile.open("NeutronCaptureIons.csv", std::ios::out);
             // Write Header
@@ -134,7 +133,9 @@ public:
     }
     
     virtual ~CaptureKillerAction() {
-        // We let the OS close the file at program exit
+        // We usually don't close the static file here because other threads 
+        // might still be using it. We let the OS close it at program exit 
+        // or close it in the main RunAction.
     }
 
     virtual G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track* aTrack) {
@@ -161,7 +162,7 @@ public:
 
                     // Lock the file, write the data, then unlock
                     {
-                        std::lock_guard<std::mutex> lock(captureMutex);
+                        G4AutoLock lock(&captureMutex);
                         captureFile << name << ","
                                     << eKin / MeV << ","
                                     << pos.x() / mm << ","
